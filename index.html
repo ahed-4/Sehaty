@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CBC Lab System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Tajawal', Arial, sans-serif;
+      background-color: #f4f4f9;
+      color: #333;
+      direction: rtl;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #fff;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+    }
+
+    header {
+      position: relative;
+    }
+
+    header h1 {
+      text-align: center;
+      color: #547BF2;
+      font-size: 36px;
+      margin-bottom: 20px;
+    }
+
+    header a.edit-link {
+      position: absolute;
+      left: 20px;
+      top: 10px;
+      text-decoration: none;
+      font-size: 16px;
+      background-color: #547BF2;
+      color: white;
+      padding: 8px 14px;
+      border-radius: 8px;
+      transition: background-color 0.3s ease;
+    }
+
+    header a.edit-link:hover {
+      background-color: #21867a;
+    }
+
+    .form-container {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    input[type='text'],
+    input[type='file'] {
+      padding: 12px;
+      font-size: 16px;
+      border: 1px solid #547BF2;
+      border-radius: 10px;
+      width: 100%;
+      background-color: #f5f5f5;
+    }
+
+    .progress-bar-container {
+      position: relative;
+      width: 100%;
+      height: 50px;
+      border-radius: 8px;
+      overflow: hidden;
+      background-color: #ddd;
+      display: none;
+    }
+
+    .progress-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0%;
+      background-color: #547BF2;
+      transition: width 0.2s ease;
+    }
+
+    button {
+      padding: 12px;
+      background-color: #547BF2;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #21867a;
+    }
+
+    #smsStatus {
+      text-align: center;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+  </style>
+
+  <!-- Firebase Libraries -->
+  <script src="https://www.gstatic.com/firebasejs/7.20.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/7.20.0/firebase-database.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/7.20.0/firebase-storage.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Upload Lab Result</h1>
+      <a href="EditData.html" class="edit-link" title="تعديل البيانات">تعديل البيانات</a>
+    </header>
+
+    <div class="form-container">
+      <label for="patientName">اسم المريض:</label>
+      <input type="text" id="patientName" placeholder="أدخل اسم المريض" />
+
+      <label for="patientID">رقم المريض بدون (+967):</label>
+      <input type="text" id="patientID" placeholder="أدخل رقم المريض" inputmode="numeric" maxlength="9" autocomplete="off" />
+
+      <label for="patientFile">رفع ملف الفحص (PDF):</label>
+      <input type="file" id="patientFile" accept="application/pdf" />
+
+      <button id="submitButton" onclick="sendPatientData()">إرسال</button>
+
+      <div class="progress-bar-container" id="progressBarContainer">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+
+      <div id="smsStatus"></div>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAz8COaUKi91zqLCiawMOo-I51FgHx8gp8",
+      authDomain: "arab-24.firebaseapp.com",
+      databaseURL: "https://arab-24-default-rtdb.firebaseio.com",
+      projectId: "arab-24",
+      storageBucket: "arab-24.appspot.com",
+      messagingSenderId: "1051707223171",
+      appId: "1:1051707223171:web:8b52206482bd2bfee8ffb6",
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    const storage = firebase.storage();
+
+    document.getElementById("patientID").addEventListener("input", function () {
+      this.value = this.value.replace(/[^0-9]/g, "");
+    });
+
+    function sendPatientData() {
+      const submitButton = document.getElementById("submitButton");
+      const progressBarContainer = document.getElementById("progressBarContainer");
+      const progressBar = document.getElementById("progressBar");
+      const smsStatus = document.getElementById("smsStatus");
+
+      const name = document.getElementById("patientName").value.trim();
+      const rawNumber = document.getElementById("patientID").value.trim();
+      const fileInput = document.getElementById("patientFile");
+      const file = fileInput.files[0];
+
+      if (!file || file.type !== "application/pdf") {
+        alert("يرجى اختيار ملف PDF فقط.");
+        return;
+      }
+
+      if (!/^[7][0-9]{8}$/.test(rawNumber)) {
+        alert("رقم المريض غير صحيح. يجب أن يكون 9 أرقام ويبدأ بـ 7.");
+        return;
+      }
+
+      const fullNumber = "+967" + rawNumber;
+      const nameParts = name.split(/\s+/);
+      if (nameParts.length < 2 || nameParts.length > 4) {
+        alert("يرجى إدخال الاسم بشكل صحيح.");
+        return;
+      }
+
+      submitButton.style.display = "none";
+      progressBarContainer.style.display = "block";
+
+      const storageRef = storage.ref(`patients/${rawNumber}_${Date.now()}_${file.name}`);
+      const uploadTask = storageRef.put(file);
+
+      uploadTask.on("state_changed",
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          progressBar.style.width = progress + "%";
+        },
+        (error) => {
+          alert("خطأ أثناء رفع الملف: " + error.message);
+          submitButton.style.display = "block";
+          progressBarContainer.style.display = "none";
+        },
+        () => {
+          uploadTask.snapshot.ref.getDownloadURL().then((downloadURL) => {
+            const newKey = database.ref("patients").push().key;
+            const arabicDate = new Intl.DateTimeFormat('ar-EG', {
+              year: 'numeric', month: 'numeric', day: 'numeric',
+              hour: 'numeric', minute: 'numeric', second: 'numeric',
+              hour12: true
+            }).format(new Date());
+
+            database.ref("patients/" + newKey).set({
+              Name: name,
+              Number: fullNumber,
+              imageUrl: downloadURL,
+              Date: arabicDate
+            }).then(() => {
+              alert("✅ تم حفظ بيانات المريض بنجاح.");
+              sendSMS(fullNumber);
+              progressBar.style.width = "0%";
+              progressBarContainer.style.display = "none";
+              submitButton.style.display = "block";
+              document.getElementById("patientName").value = "";
+              document.getElementById("patientID").value = "";
+              fileInput.value = "";
+            });
+          });
+        }
+      );
+    }
+
+    function sendSMS(phone) {
+      const statusBox = document.getElementById("smsStatus");
+      const apiKey = "4c021565-1ed9-49e1-9574-0000a3adf976";
+      const deviceId = "685430c06f73c6537a0a9d2a";
+      const url = `https://api.textbee.dev/api/v1/gateway/devices/${deviceId}/send-sms`;
+
+      const messageText = "فحوصاتك الطبية أصبحت جاهزة. يمكنك تحميل النتائج عبر تطبيق SehhatyYE أو مراجعة المركز لاستلام نسخة مطبوعة.";
+
+      const payload = {
+        recipients: [phone],
+        message: messageText
+      };
+
+      fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey
+        },
+        body: JSON.stringify(payload)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          
+        } else {
+          
+        }
+      })
+      .catch(error => {
+           
+      });
+    }
+  </script>
+</body>
+</html>
